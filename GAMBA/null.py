@@ -1,3 +1,5 @@
+import time
+
 import scipy
 
 from .data import *
@@ -57,7 +59,7 @@ class PermRes:
                 raise ValueError("permutation data or logical regression data not found")
             M = self.permut_beta.shape[1]
             for j in range(M):
-                self.graph.distplot(self.permut_beta[:, j], self.lr.beta[j, 0], nax=nax)
+                self.graph.distplot(self.permut_beta[:, j], self.lr.beta[j, 0], self.p[j, 0], nax=nax)
 
             self.graph.get_ax(nax).set_xlabel('permutation_beta')
             self.graph.get_ax(nax).set_title('null distribution plot')
@@ -78,29 +80,29 @@ class PermResImg:
     def __init__(self):
         self.lr = Lrg()
 
-    def table(self, TopK=10, p=0.5, view=True, save_fig: Optional[str] = None):
+    def table(self, TopK=10, p=(0, 0.05), view=True, save_fig: Optional[str] = None):
         if not (hasattr(self, 'lr') and hasattr(self, 'gene_symbols')):
             raise ValueError("table data not found")
 
         M = self.lr.beta.shape[1]
         self.graph = Plot(M)
         for i in range(M):
-            beta_sort = np.argsort(self.lr.beta[:, i])
-            m_invalid = ~np.logical_or(np.isnan(self.lr.beta[:, i]), self.lr.p[:, i] > p)
-            m_invalid = m_invalid[beta_sort]
-            beta_sort = beta_sort[m_invalid]
+            beta_sort = np.argsort(abs(self.lr.beta[:, i]))
+            m_valid = ~np.logical_or(np.isnan(self.lr.beta[:, i]), self.lr.p[:, i] > p[1], self.lr.p[:, i] < p[0])
+            m_valid = m_valid[beta_sort]
+            beta_sort = beta_sort[m_valid]
 
             TopK = TopK if beta_sort.size >= TopK else beta_sort.size
             max_beta_id = beta_sort[-TopK:][::-1]
             info = np.empty([TopK, 2])
-            info[:, 0] = np.around(self.lr.beta[:, i][max_beta_id],4)
+            info[:, 0] = np.around(self.lr.beta[:, i][max_beta_id], 4)
             info[:, 1] = np.around(self.lr.p[:, i][max_beta_id], 3)
 
             ax = self.graph.get_ax(i + 1)
             tab = ax.table(cellText=info, loc='center', rowLabels=self.gene_symbols[max_beta_id],
                            colLabels=['beta', 'p'], cellLoc='center', colWidths=[0.3, 0.2])
             tab.auto_set_font_size(True)
-            tab.scale(1.2,1.2)
+            tab.scale(1.2, 1.2)
             ax.axis('off')
             ax.set_title(f'Top {TopK} most relational genes expression')
 
@@ -334,11 +336,13 @@ def permutation_null_coexp(img_data: np.ndarray, goi: np.ndarray,
     NPerm = 1000
 
     # compute coexpression of the input GOI
-    G = gene.expression[np.tile(mask.T, (N, 1))]
-    G = G.reshape((N, mask.sum()))
-    coexp_mat = np.ma.corrcoef(np.ma.masked_invalid(G), rowvar=False).data
-    mask_tri = np.tril(np.ones(coexp_mat.shape), -1)
-    coexp = np.nanmean(coexp_mat[mask_tri == 1])
+    G = ETmp
+    if G.shape[1] > 1:
+        coexp_mat = np.ma.corrcoef(np.ma.masked_invalid(G), rowvar=False).data
+        mask_tri = np.tril(np.ones(coexp_mat.shape), -1)  # 下三角
+        coexp = np.nanmean(coexp_mat[mask_tri == 1])
+    else:
+        coexp = 1.0
 
     res.coexp_mean = coexp
 
@@ -372,6 +376,8 @@ def permutation_null_coexp(img_data: np.ndarray, goi: np.ndarray,
     res.permut_coexp_mean = coexp_null
 
     # ===== compute p-value =====
+    # p值是当假定零假设为真时，得到的结果与观测到的结果相同或更极端的概率。
+    # p-value没有单双侧之分，其定义就是 X~某个分布f, 当前观测值为x, P-value = Prob(X>=x)
     res.p = np.full((M, 1), np.nan)
     for i in range(M):
         P = np.count_nonzero((beta_null[:, i] > beta[i])) / NPerm
@@ -384,7 +390,7 @@ def permutation_null_coexp(img_data: np.ndarray, goi: np.ndarray,
     return res
 
 
-def permutation_null_spin_coexp(img_data):
+def permutation_null_spin_corr(img_data):
     print('loop all genes, looking for top correlated genes for img_data')
 
     gene = load_gene_expression(regionDesc=False)
@@ -434,7 +440,7 @@ def permutation_null_spin_coexp(img_data):
                     X = (X - np.nanmean(X)) / np.nanstd(X)
                     # linear regression
                     stats = scipy.stats.linregress(Y[:, j], X)
-                    beta_null[k, j] = stats.pvalue
+                    beta_null[k, j] = stats.slope
             # pvalue
             P = np.count_nonzero((beta_null[:, j] > beta[i, j])) / 1000
             if P > 0.5:
@@ -445,6 +451,11 @@ def permutation_null_spin_coexp(img_data):
     # end for in loop K
     pbar.clear()
 
+    np.save('./lr_p.npy', pval)
+    np.save('./lr_beta.npy', beta)
+    np.save('./gene_symbols.npy', gene.symbols)
+    np.save('./p.npy', res.p)
+
     res.lr.beta = beta
     res.lr.p = pval
     res.gene_symbols = gene.symbols
@@ -454,7 +465,7 @@ def permutation_null_spin_coexp(img_data):
 
 def _check_img_geneExp(img_data: np.ndarray, goi: np.ndarray, gene: Gene) -> np.ndarray:
     """
-    :return mask on gene.symbols with goi
+    :return: mask on gene-symbols with goi
     """
     N, M = img_data.shape
     print("##", N, "brain regions detected,", M, "imaging traits detected.")
@@ -489,6 +500,14 @@ def _iloc_isMember(A: np.ndarray, B: np.ndarray) -> np.ndarray:
 
 
 def _y_rand_gs_coexp(G: np.ndarray, T, NG: int, maxDiff=0.025):
+    """
+
+    :param G: All gene expression matrix
+    :param T: Target coexp
+    :param NG: number of genes
+    :param maxDiff:
+    :return: gene_id, coexp, status
+    """
     NGenes = G.shape[1]
     NCount = 0
     status = True
@@ -496,11 +515,13 @@ def _y_rand_gs_coexp(G: np.ndarray, T, NG: int, maxDiff=0.025):
     # initialize a set of random genes
     gene_id: np.ndarray = np.random.permutation(NGenes)[:NG]
     GRand = G[:, gene_id]
-    # GRand = G[:, :100]
 
     # compute mean coexpression for each gene and for the whole set
     _, tmp_coexp_mean, coexp = _compute_mean_coexp(GRand)
     delta_coexp = coexp - T  # difference from the Target
+
+    if abs(delta_coexp) < maxDiff:
+        return gene_id, coexp, status
 
     # compute coexpression between the GOI and the rest of genes
     GSub_G_coexp = _compute_GSub_G_coexp(GRand, G)
@@ -549,10 +570,20 @@ def _y_rand_gs_coexp(G: np.ndarray, T, NG: int, maxDiff=0.025):
 
 # compute mean coexpression
 def _compute_mean_coexp(G_sub):
+    """
+    :param G_sub:
+    :return:
+        coexp_mat
+        coexp_mean: row mean of coexp_mat
+        coexp_mean_mean: mean of tril coexp_mat
+    """
     coexp_mat = _corr2_coeff(G_sub, G_sub, rowvar=False, nan='pairwise')
     coexp_mean = np.nanmean(coexp_mat, 0)
-    mask_tril = np.tril(np.ones(coexp_mean.shape), -1)
-    coexp_mean_mean = np.nanmean(coexp_mat[mask_tril == 1])
+    if G_sub.shape[1] > 1:
+        mask_tril = np.tril(np.ones(coexp_mean.shape), -1)
+        coexp_mean_mean = np.nanmean(coexp_mat[mask_tril == 1])
+    else:
+        coexp_mean_mean = 1.0
     return coexp_mat, coexp_mean, coexp_mean_mean
 
 

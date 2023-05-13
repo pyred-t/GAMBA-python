@@ -1,5 +1,4 @@
 import os
-import random
 import sys
 import tempfile
 # import urllib.request
@@ -52,48 +51,48 @@ def fetch_null_spin():
     # url = 'https://189.ly93.cc/NBr6Zb6RrEBz/12529163552364716?accessCode=sa67'
 
     temp = tempfile.NamedTemporaryFile(mode='wb', delete=False)
-    # print(temp.name)
-    # temp.close()
-    # urllib.request.urlretrieve(url, filename=temp.name)
 
     response = requests.get(url, stream=True)
 
     if response.status_code != 200:
+        os.remove(temp.name)
         raise ConnectionError("Unable to connect to the files")
-    chunk_size = 1024
-    content_size = int(response.headers['content-length'])
-    pbar = Progress(content_size)
 
-    chunk_count = 0
-    chunk_thread = 1024*100
-    speed_str = ''
-    t = time.time()
+    try:
+        chunk_size = 1024
+        content_size = int(response.headers['content-length'])
+        pbar = Progress(content_size)
 
-    for data in response.iter_content(chunk_size=chunk_size):
-        temp.write(data)
-        chunk_count += len(data)
-        if chunk_count > chunk_thread:
-            speed = (chunk_count / 1024) / (time.time() - t)
-            t = time.time()
-            chunk_count = 0
-            speed_str = '{:.2f}MB/s'.format(speed / 1024) if speed > 1024 else '{:.2f}kB/s'.format(speed)
+        chunk_count = 0
+        chunk_thread = 1024 * 100
+        speed_str = ''
+        t = time.time()
 
-        pbar.progress(len(data), s=speed_str, default=False, percent=True)
+        for data in response.iter_content(chunk_size=chunk_size):
+            temp.write(data)
+            chunk_count += len(data)
+            if chunk_count > chunk_thread:
+                speed = (chunk_count / 1024) / (time.time() - t)
+                t = time.time()
+                chunk_count = 0
+                speed_str = '{:.2f}MB/s'.format(speed / 1024) if speed > 1024 else '{:.2f}kB/s'.format(speed)
 
-    pbar.clear()
-    temp.close()
+            pbar.progress(len(data), s=speed_str, default=False, percent=True)
 
-    print("download ok, retrieving...")
+        pbar.clear()
+        temp.close()
+        print("download ok, retrieving...")
 
-    spinDir = dirPath.joinpath('default', 'gene_expression_spin')
-    if not spinDir.is_dir():
-        os.mkdir(spinDir.__str__())
+        spinDir = dirPath.joinpath('default', 'gene_expression_spin')
+        if not spinDir.is_dir():
+            os.mkdir(spinDir.__str__())
 
-    zfile = zipfile.ZipFile(temp.name)
-    zfile.extractall(spinDir.__str__())
-    zfile.close()
+        zfile = zipfile.ZipFile(temp.name)
+        zfile.extractall(spinDir.__str__())
+        zfile.close()
+    finally:
+        os.remove(temp.name)
 
-    os.remove(temp.name)
     print('>> ok')
 
 
@@ -179,8 +178,9 @@ _atlases = dict({
 })
 
 
-def group_regions(co_img_file: str, atlas: str = 'DK114') -> dict[str, np.ndarray]:
+def group_regions(co_img_file: str, atlas: str = 'DK114', left_only=True) -> dict[str, np.ndarray]:
     """
+    :param left_only: return data relevant to left hemisphere only
     :param co_img_file: input brain map (.nii file) that has been co-registered to the same space as MNI152 brain, i.e.
     :param atlas: 'DK114'(default), 'aparc', 'DK250'
     :return:
@@ -194,7 +194,7 @@ def group_regions(co_img_file: str, atlas: str = 'DK114') -> dict[str, np.ndarra
     lookupTable = atl_path.joinpath(_atlases[atlas][0]).__str__()
     ref_file = atl_path.joinpath(_atlases[atlas][1]).__str__()
 
-    print(f'group regions by atlas {atlas}')
+    print(f'\ngroup regions by atlas {atlas}')
 
     hdr = _load_nifti(co_img_file)
     vol = hdr['vol']
@@ -202,30 +202,33 @@ def group_regions(co_img_file: str, atlas: str = 'DK114') -> dict[str, np.ndarra
     ref = _load_nifti(ref_file)
 
     res = dict()
-    # read color table
+    # read table
     tbl = pd.read_csv(lookupTable, sep="\\s+", header=None)
     res['regionIndexes'] = tbl.iloc[:, 0].values
     res['regionDescriptions'] = tbl.iloc[:, 1].values.astype(str)
 
+    if left_only:
+        ctx_l = np.where(np.char.find(res['regionDescriptions'], 'ctx-lh-') != -1)
+        res['regionIndexes'] = res['regionIndexes'][ctx_l]
+        res['regionDescriptions'] = res['regionDescriptions'][ctx_l]
+
     # compute regional mean
     # res['data'] = np.full((res['regionDescriptions'].size, 1), np.nan)
 
-    # t = time.time()
-    # tbl['a'] = tbl.iloc[:, 0].apply(_myfunc, ref_vol=ref['vol'], vol=vol)
-    pfunc = partial(_myfunc, ref_vol=ref['vol'], vol=vol)
+    p_func = partial(__ref_mean, ref_vol=ref['vol'], vol=vol)
     with mp.Pool() as tpool:
-        res['data'] = np.array(tpool.map(pfunc, res['regionIndexes']))
-    # print(f'1 {time.time() - t}')
-
-    # t = time.time()
+        res['data'] = np.array(tpool.map(p_func, res['regionIndexes'])).reshape(res['regionIndexes'].size, 1)
+    #
     # for i, x in enumerate(res['regionIndexes']):
     #     tmp = vol[ref['vol'] == x]
     #     res['data'][i] = np.mean(tmp)
-    # print(f'1 {time.time() - t}')
+
+    print('>> ok')
 
     return res
 
-def _myfunc(x, ref_vol, vol):
+
+def __ref_mean(x, ref_vol, vol):
     return np.mean(vol[ref_vol == x])
 
 

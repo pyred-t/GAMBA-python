@@ -3,7 +3,6 @@ import numbers
 import os
 import sys
 import tempfile
-import time
 import webbrowser
 from typing import Union, Optional
 from pathlib import Path
@@ -52,9 +51,9 @@ class Plot:
         else:
             return self.axs[nax - 1]
 
-    def distplot(self, data: np.ndarray, beta: float, nax=1):
+    def distplot(self, data: np.ndarray, beta: float, p: float, nax=1):
         ax = self.get_ax(nax)
-        sns.histplot(data=data, bins=25, kde=True, ax=ax)
+        sns.histplot(data=data, bins=25, kde=True, ax=ax, line_kws={'label': f'p:{p:.3f}'})
         ax.axvline(x=beta, color='r', label='{:.3f}'.format(beta))
         ax.legend()
 
@@ -82,7 +81,7 @@ def plotBrain(regions: np.ndarray[str], values: np.ndarray[numbers.Number], view
     :param color: Name of matplotlib colormap
     :param file: path to save the file
     :param scaling: scale of the figure, 0.1 by default
-    :param lh_only: show left left hemisphere only
+    :param lh_only: show left hemisphere only
     :param atlas: 'lausanne120'(default), 'aparc', 'aparc_aseg', 'lausanne120_aseg', 'lausanne250', 'wbb47'
 
     """
@@ -101,7 +100,7 @@ def plotBrain(regions: np.ndarray[str], values: np.ndarray[numbers.Number], view
     values[values < limits[0]] = limits[0]
     values[values > limits[1]] = limits[1]
 
-    colors = np.round(np.array(sns.color_palette(color))*255).astype(int)
+    colors = np.round(np.array(sns.color_palette(color)) * 255).astype(int)
     values_norm = (values - limits[0]) / (limits[1] - limits[0])
     values_color_idx = (np.round(values_norm * (colors.shape[0] - 1))).astype(int)
 
@@ -162,19 +161,7 @@ def plotBrain(regions: np.ndarray[str], values: np.ndarray[numbers.Number], view
         atexit.register(_clean_file, savefile, cb_file)
 
 
-_firstClean = True
-
-
 def _clean_file(f1, f2):
-    global _firstClean
-    if _firstClean:
-        _firstClean = False
-        try:
-            time.sleep(1)
-        except:
-            pass
-    if sys.gettrace():
-        print('remove temp file',f1, f2)
     os.remove(f1)
     os.remove(f2)
 
@@ -194,7 +181,6 @@ def _RGB_to_File(rgb: np.ndarray, file):
     im = PIL.Image.new("RGB", (1, lines))
     for i in range(lines):
         # im.putpixel((0, lines - 1 - i), (int(np.round(rgb[i][0] * 255)), int(np.round(rgb[i][1] * 255)),
-        #                                  int(np.round(rgb[i][2] * 255))))
-        # im.putpixel((0, lines - 1 - i), (rgb[i][0], rgb[i][1], rgb[i][2]))
+        #                                  int(np.round(rgb[i][2] * 255)))))
         im.putpixel((0, lines - 1 - i), tuple(rgb[i].tolist()))
     im.save(file)

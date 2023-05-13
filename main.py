@@ -10,10 +10,9 @@ import GAMBA as gm
 def print_hi():
     f = gm.load_example_coregistered()
     res_Y = gm.group_regions(f)
-    ctx_l = np.where(np.char.find(res_Y['regionDescriptions'], 'ctx-lh-') != -1)
 
-    img_data = res_Y['data'][ctx_l]
-    res = gm.association(img_data, ['APOE', 'APP', 'PSEN2'], option=['spin'])
+    # res = gm.association(res_Y['data'], ['APOE', 'APP', 'PSEN2'], option=['coexp'])
+    res = gm.association(res_Y['data'], ['APOE'], option=['coexp'])
 
     res.plot()
 

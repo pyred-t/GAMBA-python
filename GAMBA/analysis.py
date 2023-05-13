@@ -69,4 +69,4 @@ def geneset_analysis(goi: List[str], option: Union[str, List[str]], gene: Gene =
 
 
 def image_based_analysis(img_data: np.ndarray) -> PermResImg:
-    return permutation_null_spin_coexp(img_data)
+    return permutation_null_spin_corr(img_data)
