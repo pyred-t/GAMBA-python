@@ -61,7 +61,7 @@ def fetch_null_spin():
     try:
         chunk_size = 1024
         content_size = int(response.headers['content-length'])
-        pbar = Progress(content_size)
+        pbar = Progress(content_size,default=False, percent=True)
 
         chunk_count = 0
         chunk_thread = 1024 * 100
@@ -77,7 +77,7 @@ def fetch_null_spin():
                 chunk_count = 0
                 speed_str = '{:.2f}MB/s'.format(speed / 1024) if speed > 1024 else '{:.2f}kB/s'.format(speed)
 
-            pbar.progress(len(data), s=speed_str, default=False, percent=True)
+            pbar.progress(len(data), s=speed_str)
 
         pbar.clear()
         temp.close()
@@ -214,14 +214,13 @@ def group_regions(co_img_file: str, atlas: str = 'DK114', left_only=True) -> dic
 
     # compute regional mean
     # res['data'] = np.full((res['regionDescriptions'].size, 1), np.nan)
+    # for i, x in enumerate(res['regionIndexes']):
+    #     tmp = vol[ref['vol'] == x]
+    #     res['data'][i] = np.mean(tmp)
 
     p_func = partial(__ref_mean, ref_vol=ref['vol'], vol=vol)
     with mp.Pool() as tpool:
         res['data'] = np.array(tpool.map(p_func, res['regionIndexes'])).reshape(res['regionIndexes'].size, 1)
-    #
-    # for i, x in enumerate(res['regionIndexes']):
-    #     tmp = vol[ref['vol'] == x]
-    #     res['data'][i] = np.mean(tmp)
 
     print('>> ok')
 

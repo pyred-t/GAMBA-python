@@ -25,7 +25,7 @@ class PermResExp:
         :param color: Name of matplotlib colormap
         :param file: path to save the file
         :param scaling: scale of the figure, 0.1 by default
-        :param lh_only: show left left hemisphere only
+        :param lh_only: show left hemisphere only
         :param atlas: 'lausanne120'(default), 'aparc', 'aparc_aseg', 'lausanne120_aseg', 'lausanne250', 'wbb47'
         """
         if not (hasattr(self, 'regionDescriptions') and hasattr(self, 'mean_expression')):

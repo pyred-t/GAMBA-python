@@ -15,15 +15,17 @@ import seaborn as sns
 
 
 class Progress:
-    def __init__(self, total: int):
+    def __init__(self, total: int,default=True, percent=False):
         self.total = total
         self.n = 0
+        self.default = default
+        self.percent = percent
 
-    def progress(self, step: int = 1, s: str = '', default=True, percent=False):
+    def progress(self, step: int = 1, s: str = ''):
         self.n += step
         b = int(self.n / self.total * 30)
-        def_str = f'{self.n}/{self.total}' if default else ''
-        per_str = ' {:.1f}%'.format(self.n / self.total * 100) if percent else ''
+        def_str = f'{self.n}/{self.total}' if self.default else ''
+        per_str = ' {:.1f}%'.format(self.n / self.total * 100) if self.percent else ''
         sys.stdout.write(f'\r## Progress {def_str}:{s} '
                          + '#' * b + '-' * (30 - b)
                          + '|' + per_str)
@@ -134,9 +136,6 @@ def plotBrain(regions: np.ndarray[str], values: np.ndarray[numbers.Number], view
         id = elem.get('id')
         if id is None or 'ctx-' not in id:
             continue
-        # print(id)
-        if 'pericalcarine' in id:
-            a = 1
         for rk, r in enumerate(regions):
             if r in id:
                 cid = values_color_idx[rk]

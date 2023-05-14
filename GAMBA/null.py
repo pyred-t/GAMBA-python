@@ -80,31 +80,33 @@ class PermResImg:
     def __init__(self):
         self.lr = Lrg()
 
-    def table(self, TopK=10, p=(0, 0.05), view=True, save_fig: Optional[str] = None):
-        if not (hasattr(self, 'lr') and hasattr(self, 'gene_symbols')):
+    def table(self, TopK=10, lp=(0, 0.05), p=(0, 0.05), view=True, save_fig: Optional[str] = None):
+        if not (hasattr(self, 'lr') and hasattr(self, 'gene_symbols') and hasattr(self, 'p')):
             raise ValueError("table data not found")
 
         M = self.lr.beta.shape[1]
         self.graph = Plot(M)
         for i in range(M):
             beta_sort = np.argsort(abs(self.lr.beta[:, i]))
-            m_valid = ~np.logical_or(np.isnan(self.lr.beta[:, i]), self.lr.p[:, i] > p[1], self.lr.p[:, i] < p[0])
+            m_valid = ~np.logical_or(np.isnan(self.lr.beta[:, i]), self.lr.p[:, i] > lp[1], self.lr.p[:, i] < lp[0],
+                                     self.p[:, i] > p[1], self.p[:, i] < p[0])
             m_valid = m_valid[beta_sort]
             beta_sort = beta_sort[m_valid]
 
             TopK = TopK if beta_sort.size >= TopK else beta_sort.size
             max_beta_id = beta_sort[-TopK:][::-1]
-            info = np.empty([TopK, 2])
+            info = np.empty([TopK, 3])
             info[:, 0] = np.around(self.lr.beta[:, i][max_beta_id], 4)
             info[:, 1] = np.around(self.lr.p[:, i][max_beta_id], 3)
+            info[:, 2] = np.around(self.p[:, i][max_beta_id], 3)
 
             ax = self.graph.get_ax(i + 1)
             tab = ax.table(cellText=info, loc='center', rowLabels=self.gene_symbols[max_beta_id],
-                           colLabels=['beta', 'p'], cellLoc='center', colWidths=[0.3, 0.2])
+                           colLabels=['beta', 'lp', 'p'], cellLoc='center', colWidths=[0.3, 0.2, 0.2])
             tab.auto_set_font_size(True)
             tab.scale(1.2, 1.2)
             ax.axis('off')
-            ax.set_title(f'Top {TopK} most relational genes expression')
+            ax.set_title(f'Top {TopK} most relational genes expression of traits{M}')
 
         if view:
             self.graph.fig.show()
@@ -148,7 +150,7 @@ def permutation_null_spin(img_data: np.ndarray, goi: np.ndarray,
     Y = (Y - np.full((N, 1), np.nanmean(Y, 0))) / np.full((N, 1), np.nanstd(Y, 0))
 
     for i in range(M):
-        stats = scipy.stats.linregress(Y[:, i], X)
+        stats = nan_linregress(Y[:, i], X)
         beta[i, 0] = stats.slope
         pval[i, 0] = stats.pvalue
 
@@ -176,10 +178,7 @@ def permutation_null_spin(img_data: np.ndarray, goi: np.ndarray,
         X = (X - np.nanmean(X)) / np.nanstd(X)
 
         for i in range(M):
-            # pair-wise, ignoring nan row
-            mask_invalid = np.logical_or(np.isnan(Y[:, i]), np.isnan(X))
-            stats = scipy.stats.linregress(Y[:, i][~mask_invalid], X[~mask_invalid])
-            beta_null[k, i] = stats.slope
+            beta_null[k, i] = nan_linregress(Y[:, i], X).slope
 
     pbar.clear()
 
@@ -239,7 +238,7 @@ def permutation_null_brain(img_data: np.ndarray, goi: np.ndarray, expressions: O
     Y = (Y - np.full((N, 1), np.nanmean(Y, 0))) / np.full((N, 1), np.nanstd(Y, 0))
 
     for i in range(M):
-        stats = scipy.stats.linregress(Y[:, i], X)
+        stats = nan_linregress(Y[:, i], X)
         beta[i, 0] = stats.slope
         pval[i, 0] = stats.pvalue
 
@@ -269,7 +268,7 @@ def permutation_null_brain(img_data: np.ndarray, goi: np.ndarray, expressions: O
         X = (X - np.nanmean(X)) / np.nanstd(X)
 
         for i in range(M):
-            stats = scipy.stats.linregress(Y[:, i], X)
+            stats = nan_linregress(Y[:, i], X)
             beta_null[k, i] = stats.slope
 
     pbar.clear()
@@ -323,7 +322,7 @@ def permutation_null_coexp(img_data: np.ndarray, goi: np.ndarray,
     Y = (Y - np.full((N, 1), np.nanmean(Y, 0))) / np.full((N, 1), np.nanstd(Y, 0))
 
     for i in range(M):
-        stats = scipy.stats.linregress(Y[:, i], X)
+        stats = nan_linregress(Y[:, i], X)
         beta[i, 0] = stats.slope
         pval[i, 0] = stats.pvalue
 
@@ -366,7 +365,7 @@ def permutation_null_coexp(img_data: np.ndarray, goi: np.ndarray,
         X = (X - np.nanmean(X)) / np.nanstd(X)
 
         for i in range(M):
-            stats = scipy.stats.linregress(Y[:, i], X)
+            stats = nan_linregress(Y[:, i], X)
             beta_null[k, i] = stats.slope
 
     pbar.clear()
@@ -415,7 +414,7 @@ def permutation_null_spin_corr(img_data):
     Y = img_data
     Y = (Y - np.full((N, 1), np.nanmean(Y, 0))) / np.full((N, 1), np.nanstd(Y, 0))
 
-    pbar = Progress(K)
+    pbar = Progress(K, percent=True)
     for i in range(K):
         pbar.progress()
 
@@ -426,21 +425,30 @@ def permutation_null_spin_corr(img_data):
 
         for j in range(M):
             # linear regression
-            stats = scipy.stats.linregress(Y[:, j], X)
+            stats = nan_linregress(Y[:, j], X)
             beta[i, j] = stats.slope
             pval[i, j] = stats.pvalue
             # null_spin
             null_spin_expression = load_null_spin(gene.symbols[i]).T
             if null_spin_expression.size == 0:
-                null_spin_expression = np.full((N, 1000), np.nan)
+                continue
 
-            for k in range(1000):
-                X = null_spin_expression[:, k]
-                if not np.isnan(X).all():
-                    X = (X - np.nanmean(X)) / np.nanstd(X)
-                    # linear regression
-                    stats = scipy.stats.linregress(Y[:, j], X)
-                    beta_null[k, j] = stats.slope
+            # for k in range(1000):
+            #     X = null_spin_expression[:, k]
+            #     if not np.isnan(X).all():
+            #         X = (X - np.nanmean(X)) / np.nanstd(X)
+            #         # linear regression
+            #         stats = scipy.stats.linregress(Y[:, j], X)
+            #         beta_null[k, j] = stats.slope
+
+            idx = ~np.isnan(null_spin_expression).all(axis=0)
+            X = (null_spin_expression[:, idx] - np.nanmean(null_spin_expression[:, idx], axis=0))
+            X /= np.nanstd(X, axis=0)
+
+            # linear regression
+            beta_null[idx, j] = np.apply_along_axis(
+                lambda x: nan_linregress(Y[:, j], x).slope, 0, X
+            )
             # pvalue
             P = np.count_nonzero((beta_null[:, j] > beta[i, j])) / 1000
             if P > 0.5:
@@ -461,6 +469,18 @@ def permutation_null_spin_corr(img_data):
     res.gene_symbols = gene.symbols
 
     return res
+
+
+def nan_linregress(A, B):
+    """
+    :param A: y
+    :param B: x
+    :return:
+    """
+    # pair-wise, ignoring nan row
+    mask_invalid = np.logical_or(np.isnan(A), np.isnan(B))
+    stats = scipy.stats.linregress(x=B[~mask_invalid], y=A[~mask_invalid])
+    return stats
 
 
 def _check_img_geneExp(img_data: np.ndarray, goi: np.ndarray, gene: Gene) -> np.ndarray:
@@ -616,23 +636,31 @@ def _corr2_coeff(A, B, rowvar: Optional[bool] = True, nan: Optional[str] = 'all'
         A_null_idx = np.unique(np.where(np.isnan(A))[0])
         B_null_idx = np.unique(np.where(np.isnan(B))[0])
 
-        for i in A_null_idx:
-            for j in range(B.shape[0]):
-                res[i, j] = _corr1_coeff(A[i], B[j], nan='pairwise')
+        if A_null_idx.size > 0:
+            res[A_null_idx, :] = np.apply_along_axis(
+                lambda x: np.apply_along_axis(lambda y: _corr1_coeff(x, y, 'pairwise'), 1, B), 1,
+                A[A_null_idx])
+        if B_null_idx.size > 0:
+            res[:, B_null_idx] = np.apply_along_axis(
+                lambda x: np.apply_along_axis(lambda y: _corr1_coeff(y, x, 'pairwise'), 1, A), 1,
+                B[B_null_idx]).T
 
-        for j in B_null_idx:
-            for i in range(A.shape[0]):
-                res[i, j] = _corr1_coeff(A[i], B[j], nan='pairwise')
+        # for i in A_null_idx:
+        #     for j in range(B.shape[0]):
+        #         res[i, j] = _corr1_coeff(A[i], B[j], nan='pairwise')
+        #
+        # for j in B_null_idx:
+        #     for i in range(A.shape[0]):
+        #         res[i, j] = _corr1_coeff(A[i], B[j], nan='pairwise')
 
     return res
 
 
 def _corr1_coeff(A, B, nan: Optional[str] = 'all'):
     if nan == 'pairwise':
-        idx = np.union1d(np.where(np.isnan(A))[0], np.where(np.isnan(B))[0])
-        A = np.delete(A, idx)
-        B = np.delete(B, idx)
-
+        idx = np.isnan(A) | np.isnan(B)
+        A = A[~idx]
+        B = B[~idx]
     A_mA = A - A.mean()
     B_mB = B - B.mean()
 

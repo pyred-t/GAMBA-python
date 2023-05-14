@@ -11,8 +11,8 @@ def print_hi():
     f = gm.load_example_coregistered()
     res_Y = gm.group_regions(f)
 
-    # res = gm.association(res_Y['data'], ['APOE', 'APP', 'PSEN2'], option=['coexp'])
-    res = gm.association(res_Y['data'], ['APOE'], option=['coexp'])
+    res = gm.association(res_Y['data'], ['APOE', 'APP', 'PSEN2'], option=['spin'])
+    # res = gm.association(res_Y['data'], ['APOE'], option=['coexp'])
 
     res.plot()
 
@@ -49,6 +49,13 @@ def print_hi3():
     a.gene_symbols = np.load("./gene_symbols.npy")
 
     a.table()
+
+
+def print_hi4():
+    f = gm.load_example_coregistered()
+    res_Y = gm.group_regions(f)
+
+    gm.image_based_analysis(res_Y['data'])
 
 
 # 按间距中的绿色按钮以运行脚本。
